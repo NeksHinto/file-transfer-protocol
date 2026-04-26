@@ -53,6 +53,12 @@ class StopAndWait:
             f"Nuevo RTO adaptativo: {self._timeout:.3f}s " f"(RTT={sample_rtt:.3f}s)"
         )
 
+    def _recv(self, sock, timeout: float, recvfrom_fn=None):
+        if recvfrom_fn is not None:
+            return recvfrom_fn(timeout)
+        sock.settimeout(timeout)
+        return sock.recvfrom(MAX_PACKET_SIZE)
+
     # ------------------------------------------------------------------ SENDER
 
     def send_file(
@@ -62,6 +68,7 @@ class StopAndWait:
         destination: tuple,
         sock,
         chunks=None,
+        recvfrom_fn=None,
     ):
         """Envía un archivo completo al destino usando Stop & Wait."""
         if chunks is None:
@@ -86,10 +93,9 @@ class StopAndWait:
                 )
                 send_time = time.time()
                 sock.sendto(packet, destination)
-                sock.settimeout(self._timeout)
 
                 try:
-                    data, _ = sock.recvfrom(MAX_PACKET_SIZE)
+                    data, _ = self._recv(sock, self._timeout, recvfrom_fn)
                     pkt = parse_packet(data)
                     if pkt and is_ack(pkt) and pkt["ack"] == seq_num:
                         self._log(f"ACK recibido seq: {seq_num}")
@@ -117,27 +123,30 @@ class StopAndWait:
         for _ in range(MAX_RETRIES):
             self._log("FIN enviado")
             sock.sendto(fin, destination)
-            sock.settimeout(self._timeout)
             try:
-                data, _ = sock.recvfrom(MAX_PACKET_SIZE)
+                data, _ = self._recv(sock, self._timeout, recvfrom_fn)
                 pkt = parse_packet(data)
                 if pkt and is_ack(pkt):
                     self._log("FIN ACK recibido")
                     break
+            except TimeoutError:
+                pass
             except OSError:
                 pass
 
     # ---------------------------------------------------------------- RECEIVER
 
-    def receive_file(self, filepath: str, sock, sender_addr: tuple):
+    def receive_file(self, filepath: str, sock, sender_addr: tuple, recvfrom_fn=None):
         """Recibe un archivo y lo escribe en filepath."""
         expected_seq = 0
-        sock.settimeout(10.0)
 
         with open(filepath, "wb") as f:
             while True:
                 try:
-                    data, addr = sock.recvfrom(MAX_PACKET_SIZE)
+                    data, addr = self._recv(sock, 10.0, recvfrom_fn)
+                except TimeoutError:
+                    logger.error("Timeout esperando datos del emisor")
+                    break
                 except OSError:
                     logger.error("Timeout esperando datos del emisor")
                     break

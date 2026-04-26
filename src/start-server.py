@@ -35,7 +35,7 @@ class ClientHandler(threading.Thread):
     """Un hilo por cliente. Maneja un UPLOAD o DOWNLOAD completo."""
 
     def __init__(
-        self, addr, operation, filename, storage_dir, sock, verbose, finished_q
+        self, addr, operation, filename, storage_dir, sock, verbose, finished_q, incoming_q
     ):
         super().__init__(daemon=True)
         self.addr = addr
@@ -45,6 +45,13 @@ class ClientHandler(threading.Thread):
         self.sock = sock
         self.verbose = verbose
         self.finished_q = finished_q
+        self.incoming_q = incoming_q
+
+    def _recvfrom_client(self, timeout: float):
+        try:
+            return self.incoming_q.get(timeout=timeout)
+        except queue.Empty as e:
+            raise TimeoutError() from e
 
     def run(self):
         logger.info(f"[{self.addr}] {self.operation} '{self.filename}'")
@@ -73,7 +80,7 @@ class ClientHandler(threading.Thread):
         # ACK al handshake
         self.sock.sendto(create_ack_packet(0), self.addr)
         proto = StopAndWait(verbose=self.verbose)
-        proto.receive_file(filepath, self.sock, self.addr)
+        proto.receive_file(filepath, self.sock, self.addr, recvfrom_fn=self._recvfrom_client)
         logger.info(f"[{self.addr}] Archivo guardado: {filepath}")
 
     def _download(self):
@@ -87,7 +94,7 @@ class ClientHandler(threading.Thread):
             return
         self.sock.sendto(create_ack_packet(0), self.addr)
         proto = StopAndWait(verbose=self.verbose)
-        proto.send_file(filepath, self.filename, self.addr, self.sock)
+        proto.send_file(filepath, self.filename, self.addr, self.sock, recvfrom_fn=self._recvfrom_client)
         logger.info(f"[{self.addr}] Archivo enviado: {self.filename}")
 
 
@@ -127,7 +134,10 @@ class Server:
                 continue
 
             with self._lock:
-                if addr not in self.clients and is_handshake(pkt):
+                client = self.clients.get(addr)
+                if client is not None:
+                    client["incoming_q"].put((data, addr))
+                elif is_handshake(pkt):
                     self._spawn(addr, pkt)
 
     def _spawn(self, addr, pkt):
@@ -138,7 +148,7 @@ class Server:
         except Exception:
             self.sock.sendto(create_error_packet("Handshake invalido"), addr)
             return
-
+        incoming_q = queue.Queue()
         handler = ClientHandler(
             addr=addr,
             operation=operation,
@@ -147,8 +157,13 @@ class Server:
             sock=self.sock,
             verbose=self.verbose,
             finished_q=self.finished_q,
+            incoming_q=incoming_q,
         )
-        self.clients[addr] = handler
+        self.clients[addr] = {
+            "handler": handler,
+            "incoming_q": incoming_q,
+        }
+
         handler.start()
         logger.info(f"[{addr}] Nuevo cliente: {operation} '{filename}'")
 
