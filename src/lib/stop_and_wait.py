@@ -146,10 +146,10 @@ class StopAndWait(BaseProtocol):
             while True:
                 try:
                     data, addr = self._recv(sock, 10.0, recvfrom_fn)
-                except OSError:
+                except TimeoutError:
                     logger.error("Timeout esperando datos del emisor")
                     break
-                except TimeoutError:
+                except OSError:
                     logger.error("Timeout esperando datos del emisor")
                     break
 
