@@ -22,7 +22,7 @@ from lib.packet import (  # noqa: E402
     read_file_chunks,
     MAX_PACKET_SIZE,
 )
-from lib.stop_and_wait import StopAndWait  # noqa: E402
+from lib.protocol import get_protocol  # noqa: E402
 
 logger = logging.getLogger("UPLOAD")
 
@@ -37,6 +37,12 @@ def main():
     verb = parser.add_mutually_exclusive_group()
     verb.add_argument("-v", "--verbose", action="store_true")
     verb.add_argument("-q", "--quiet", action="store_true")
+    parser.add_argument(
+        "-r",
+        "--protocol",
+        default="stop_and_wait",
+        help="Protocolo de recuperación: stop_and_wait | selective_repeat (default: stop_and_wait)",
+    )
     parser.add_argument(
         "-H", "--host", default="127.0.0.1", help="IP del servidor (default: 127.0.0.1)"
     )
@@ -75,10 +81,13 @@ def main():
     # trunque la misma ruta cuando cliente y servidor comparten storage.
     source_chunks = list(read_file_chunks(args.src))
 
+    # Obtener instancia del protocolo
+    protocol = get_protocol(args.protocol, verbose=args.verbose)
+
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
-        # Handshake
-        handshake = create_handshake_packet("UPLOAD", args.name)
+        # Handshake (incluye el protocolo)
+        handshake = create_handshake_packet("UPLOAD", args.name, args.protocol)
         ack_received = False
         for attempt in range(1, HANDSHAKE_RETRIES + 1):
             logger.debug(f"HANDSHAKE intento {attempt}/{HANDSHAKE_RETRIES}")
@@ -101,11 +110,9 @@ def main():
             logger.error("No se pudo conectar al servidor")
             sys.exit(1)
 
-        # Transferencia
+        # Transferencia usando el protocolo elegido
         start = time.time()
-        StopAndWait(verbose=args.verbose).send_file(
-            args.src, args.name, server, sock, chunks=source_chunks
-        )
+        protocol.send_file(args.src, args.name, server, sock, chunks=source_chunks)
         elapsed = time.time() - start
         logger.info(f"Transferencia completada: {args.name}")
         logger.info(f"Tiempo: {elapsed:.2f} segundos")
