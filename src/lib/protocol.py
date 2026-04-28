@@ -35,7 +35,7 @@ def get_protocol(name: str, verbose: bool = False) -> BaseProtocol:
     if name in ("stop_and_wait", "snw", "s&w"):
         from lib.stop_and_wait import StopAndWait
         return StopAndWait(verbose)
-    # elif name in ("selective_repeat", "sr"):
-    #     from lib.selective_repeat import SelectiveRepeat
-    #     return SelectiveRepeat(verbose)
+    elif name in ("selective_repeat", "sr"):
+        from lib.selective_repeat import SelectiveRepeat
+        return SelectiveRepeat(verbose)
     raise ValueError(f"Protocolo desconocido: {name}")
