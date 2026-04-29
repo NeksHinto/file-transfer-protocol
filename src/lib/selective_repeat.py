@@ -3,6 +3,7 @@ Protocolo Selective Repeat – TP1 Redes 2026
 """
 
 import logging
+import socket
 import time
 from collections import OrderedDict
 
@@ -160,6 +161,57 @@ class SelectiveRepeat(BaseProtocol):
         Por implementar: buffer circular/ordenado, ACKs selectivos,
         escritura ordenada de los datos.
         """
-        self._log("Selective Repeat RECEIVER: aún no implementado.")
-        raise NotImplementedError("receive_file de SelectiveRepeat no implementado")
+        self._log(f"Iniciando recepción en {filepath}")
+
+        received_buffer = {}
+        expected_base = 0
+        finished = False
+
+        with open(filepath, "wb") as f:
+            while not finished:
+                try:
+                    data, addr = self._recv(sock, self._timeout, recvfrom_fn)
+                    packet = parse_packet(data)
+                    seq = packet.seq
+
+                    if is_fin(packet):  # Caso paquete FIN
+                        self._log(f"FIN recibido. Enviando ACK para FIN.")
+                        ack_pkt = create_fin_packet(seq)  # O create_ack_packet no sé
+                        sock.sendto(ack_pkt, addr)
+                        finished = True
+                        break
+
+                    if is_data(packet):
+                        if self._in_window(seq, expected_base, WINDOW_SIZE):
+                            self._log(f"Paquete {seq} recibido en ventana. Enviando ACK.")
+
+                            ack_pkt = create_ack_packet(seq)  # Envio ACK
+                            sock.sendto(ack_pkt, addr)
+
+                            if seq not in received_buffer:  # Guardo en buffer si no estaba
+                                received_buffer[seq] = packet.payload
+
+                            while expected_base in received_buffer:  # Si es el primero muevo la ventana
+                                data_to_write = received_buffer.pop(expected_base)
+                                f.write(data_to_write)
+                                self._log(f"Entregando paquete {expected_base} al archivo.")
+                                expected_base = (expected_base + 1) % MAX_SEQ
+
+                        elif self._is_previous_window(seq, expected_base,
+                                                          WINDOW_SIZE):  # Caso anterior posiblemente perdido
+                            self._log(f"Paquete {seq} antiguo (duplicado). Re-enviando ACK.")
+                            ack_pkt = create_ack_packet(seq)
+                            sock.sendto(ack_pkt, addr)
+
+                        else:
+                            # Fuera de rango, ignoramos
+                            self._log(f"Paquete {seq} fuera de rango. Ignorado.")
+
+                except (TimeoutError, socket.timeout):  # TEMPORAL: Es nomás para no quedarse atascado.
+                    continue
+                except Exception as e:
+                    self._log(f"Error durante la recepción: {e}")
+                    break
+
+        self._log("Recepción finalizada exitosamente.")
         # ---------------------------------------------------------
