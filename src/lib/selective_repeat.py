@@ -24,7 +24,7 @@ from lib.protocol import BaseProtocol
 logger = logging.getLogger("SELECTIVEREPEAT")
 
 # Parámetros del protocolo
-WINDOW_SIZE = 4                # tamaño de la ventana de envío/recepción
+WINDOW_SIZE = 16                # tamaño de la ventana de envío/recepción
 MAX_RETRIES = 20               # reintentos totales por paquete
 INITIAL_TIMEOUT = 0.5
 ALPHA = 0.125
@@ -97,7 +97,7 @@ class SelectiveRepeat(BaseProtocol):
         retries = {}
 
         while base < total:
-            while next_seq < total and next_seq < base + self.window_size:
+            while next_seq < total and next_seq < base + WINDOW_SIZE:
                 sock.sendto(packets[next_seq], destination)
                 sent_not_acked.add(next_seq)
                 last_send_ts[next_seq] = time.time()
@@ -170,12 +170,12 @@ class SelectiveRepeat(BaseProtocol):
                 try:
                     data, addr = self._recv(sock, self._timeout, recvfrom_fn)
                     packet = parse_packet(data)
-                    seq = packet.seq
+                    seq = packet["seq"] 
 
                     if is_fin(packet):  # Caso paquete FIN
                         self._log(f"FIN recibido. Enviando ACK para FIN.")
                         # TODO: Implementar para que admita ACK y SEQ
-                        ack_pkt = create_fin_packet() #seq)  # O create_ack_packet no sé
+                        ack_pkt = create_ack_packet(seq) #seq)  # O create_ack_packet no sé
                         sock.sendto(ack_pkt, addr)
                         finished = True
                         break
@@ -188,7 +188,7 @@ class SelectiveRepeat(BaseProtocol):
                             sock.sendto(ack_pkt, addr)
 
                             if seq not in received_buffer:  # Guardo en buffer si no estaba
-                                received_buffer[seq] = packet.payload
+                                received_buffer[seq] = packet["payload"]
 
                             while expected_base in received_buffer:  # Si es el primero muevo la ventana
                                 data_to_write = received_buffer.pop(expected_base)
