@@ -74,13 +74,83 @@ class SelectiveRepeat(BaseProtocol):
         chunks=None,
         recvfrom_fn=None,
     ):
-        """
-        Por implementar: lógica de envío con ventana deslizante y
-        retransmisión selectiva.
-        """
-        self._log("Selective Repeat SENDER: aún no implementado.")
-        raise NotImplementedError("send_file de SelectiveRepeat no implementado")
-        # ---------------------------------------------------------
+        """Envía un archivo completo al destino usando Selective Repeat."""
+        if chunks is None:
+            chunks = list(read_file_chunks(filepath))
+        else:
+            chunks = list(chunks)
+        total = len(chunks)
+        self._log(
+            f"Archivo dividido en {total} chunks de hasta " f"{MAX_PACKET_SIZE} bytes"
+        )
+
+        payloads = [chunk for _, chunk in chunks]
+        packets = {seq: create_data_packet(seq, payload) for seq, payload in enumerate(payloads)}
+
+
+        base = 0
+        next_seq = 0
+        acked = set()
+        sent_not_acked = set()
+        last_send_ts = {}
+        retries = {}
+
+        while base < total:
+            while next_seq < total and next_seq < base + self.window_size:
+                sock.sendto(packets[next_seq], destination)
+                sent_not_acked.add(next_seq)
+                last_send_ts[next_seq] = time.time()
+                retries.setdefault(next_seq, 0)
+                self._log(f"SR send seq={next_seq} base={base}")
+                next_seq += 1
+
+            try:
+                data, _ = self._recv(sock, self._timeout, recvfrom_fn)
+                pkt = parse_packet(data)
+                if pkt and is_ack(pkt):
+                    ack = pkt["ack"]
+                    if 0 <= ack < total and ack not in acked:
+                        acked.add(ack)
+                        sent_not_acked.discard(ack)
+                        sample = time.time() - last_send_ts.get(ack, time.time())
+                        self._update_rto(sample)
+                        self._log(f"SR ack seq={ack} (base={base})")
+                        while base in acked:
+                            base += 1
+            except OSError:
+                pass
+
+            now = time.time()
+            for seq in list(sent_not_acked):
+                sent_at = last_send_ts.get(seq, now)
+                if now - sent_at >= self._timeout:
+                    retries[seq] = retries.get(seq, 0) + 1
+                    if retries[seq] > MAX_RETRIES:
+                        raise RuntimeError(
+                            "No se pudo entregar el paquete "
+                            f"seq: {seq} tras {MAX_RETRIES} intentos"
+                        )
+                    sock.sendto(packets[seq], destination)
+                    last_send_ts[seq] = now
+                    self._log(
+                        f"SR timeout seq={seq} -> resend ({retries[seq]}/{MAX_RETRIES})"
+                    )
+
+        # Enviar FIN con reintentos
+        fin = create_fin_packet()
+        for _ in range(MAX_RETRIES):
+            self._log("FIN enviado")
+            sock.sendto(fin, destination)
+            try:
+                data, _ = self._recv(sock, self._timeout, recvfrom_fn)
+                pkt = parse_packet(data)
+                if pkt and is_ack(pkt):
+                    self._log("FIN ACK recibido")
+                    break
+            except OSError:
+                pass
+            except TimeoutError:
+                pass
 
     # ================================================================
     #                         RECEIVER
