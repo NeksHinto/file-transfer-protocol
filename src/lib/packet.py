@@ -87,7 +87,7 @@ def create_ack_packet(seq: int) -> bytes:
 
 
 def create_fin_packet() -> bytes:
-    return build_packet(0, 0, FLAG_FIN)
+    return build_packet(0, 0, FLAG_FIN) # TODO: Cambiar a build_packet(seq + 1, seq, FLAG_FIN / FLAG_ACK)
 
 
 def create_error_packet(message: str) -> bytes:

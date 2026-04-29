@@ -157,10 +157,8 @@ class SelectiveRepeat(BaseProtocol):
     #                         RECEIVER
     # ================================================================
     def receive_file(self, filepath: str, sock, sender_addr: tuple, recvfrom_fn=None):
-        """
-        Por implementar: buffer circular/ordenado, ACKs selectivos,
-        escritura ordenada de los datos.
-        """
+        # Falta: manejo de errores por fuera de timeout error
+
         self._log(f"Iniciando recepción en {filepath}")
 
         received_buffer = {}
@@ -176,7 +174,8 @@ class SelectiveRepeat(BaseProtocol):
 
                     if is_fin(packet):  # Caso paquete FIN
                         self._log(f"FIN recibido. Enviando ACK para FIN.")
-                        ack_pkt = create_fin_packet(seq)  # O create_ack_packet no sé
+                        # TODO: Implementar para que admita ACK y SEQ
+                        ack_pkt = create_fin_packet() #seq)  # O create_ack_packet no sé
                         sock.sendto(ack_pkt, addr)
                         finished = True
                         break
@@ -198,7 +197,7 @@ class SelectiveRepeat(BaseProtocol):
                                 expected_base = (expected_base + 1) % MAX_SEQ
 
                         elif self._is_previous_window(seq, expected_base,
-                                                          WINDOW_SIZE):  # Caso anterior posiblemente perdido
+                                                          WINDOW_SIZE):  # Caso: anterior posiblemente perdido
                             self._log(f"Paquete {seq} antiguo (duplicado). Re-enviando ACK.")
                             ack_pkt = create_ack_packet(seq)
                             sock.sendto(ack_pkt, addr)
