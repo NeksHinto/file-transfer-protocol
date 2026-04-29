@@ -32,9 +32,11 @@ ALPHA = 0.125  # peso de la nueva muestra de RTT
 BETA = 0.25  # peso de la nueva desviación de RTT
 
 
-class StopAndWait:
+from lib.protocol import BaseProtocol
+
+class StopAndWait(BaseProtocol):
     def __init__(self, verbose: bool = False):
-        self.verbose = verbose
+        super().__init__(verbose)
         self._estimated_rtt = INITIAL_TIMEOUT
         self._dev_rtt = 0.0
         self._timeout = INITIAL_TIMEOUT
@@ -129,9 +131,9 @@ class StopAndWait:
                 if pkt and is_ack(pkt):
                     self._log("FIN ACK recibido")
                     break
-            except TimeoutError:
-                pass
             except OSError:
+                pass
+            except TimeoutError:
                 pass
 
     # ---------------------------------------------------------------- RECEIVER

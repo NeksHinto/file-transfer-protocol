@@ -23,7 +23,7 @@ from lib.packet import (  # noqa: E402
     is_handshake,
     MAX_PACKET_SIZE,
 )
-from lib.stop_and_wait import StopAndWait  # noqa: E402
+from lib.protocol import get_protocol  # noqa: E402
 
 logger = logging.getLogger("SERVER")
 
@@ -35,12 +35,22 @@ class ClientHandler(threading.Thread):
     """Un hilo por cliente. Maneja un UPLOAD o DOWNLOAD completo."""
 
     def __init__(
-        self, addr, operation, filename, storage_dir, sock, verbose, finished_q, incoming_q
+        self,
+        addr,
+        operation,
+        filename,
+        protocol_name,
+        storage_dir,
+        sock,
+        verbose,
+        finished_q,
+        incoming_q,
     ):
         super().__init__(daemon=True)
         self.addr = addr
         self.operation = operation
         self.filename = filename
+        self.protocol_name = protocol_name  # nuevo atributo
         self.storage_dir = storage_dir
         self.sock = sock
         self.verbose = verbose
@@ -54,12 +64,13 @@ class ClientHandler(threading.Thread):
             raise TimeoutError() from e
 
     def run(self):
-        logger.info(f"[{self.addr}] {self.operation} '{self.filename}'")
+        logger.info(f"[{self.addr}] {self.operation} '{self.filename}' ({self.protocol_name})")
         try:
+            protocol = get_protocol(self.protocol_name, verbose=self.verbose)
             if self.operation == "UPLOAD":
-                self._upload()
+                self._upload(protocol)
             elif self.operation == "DOWNLOAD":
-                self._download()
+                self._download(protocol)
             else:
                 self.sock.sendto(
                     create_error_packet(f"Operacion desconocida: {self.operation}"),
@@ -75,15 +86,18 @@ class ClientHandler(threading.Thread):
             self.finished_q.put(self.addr)
             logger.info(f"[{self.addr}] Finalizado")
 
-    def _upload(self):
+    def _upload(self, protocol):
         filepath = os.path.join(self.storage_dir, self.filename)
-        # ACK al handshake
         self.sock.sendto(create_ack_packet(0), self.addr)
-        proto = StopAndWait(verbose=self.verbose)
-        proto.receive_file(filepath, self.sock, self.addr, recvfrom_fn=self._recvfrom_client)
+        protocol.receive_file(
+            filepath,
+            self.sock,
+            self.addr,
+            recvfrom_fn=self._recvfrom_client,
+        )
         logger.info(f"[{self.addr}] Archivo guardado: {filepath}")
 
-    def _download(self):
+    def _download(self, protocol):
         filepath = os.path.join(self.storage_dir, self.filename)
         if not os.path.isfile(filepath):
             self.sock.sendto(
@@ -93,8 +107,13 @@ class ClientHandler(threading.Thread):
             logger.warning(f"[{self.addr}] Archivo no encontrado: {self.filename}")
             return
         self.sock.sendto(create_ack_packet(0), self.addr)
-        proto = StopAndWait(verbose=self.verbose)
-        proto.send_file(filepath, self.filename, self.addr, self.sock, recvfrom_fn=self._recvfrom_client)
+        protocol.send_file(
+            filepath,
+            self.filename,
+            self.addr,
+            self.sock,
+            recvfrom_fn=self._recvfrom_client,
+        )
         logger.info(f"[{self.addr}] Archivo enviado: {self.filename}")
 
 
@@ -145,14 +164,17 @@ class Server:
             parts = pkt["payload"].decode().split("|")
             operation = parts[0]
             filename = os.path.basename(parts[1])
+            protocol = parts[2] if len(parts) > 2 else "stop_and_wait"
         except Exception:
             self.sock.sendto(create_error_packet("Handshake invalido"), addr)
             return
+
         incoming_q = queue.Queue()
         handler = ClientHandler(
             addr=addr,
             operation=operation,
             filename=filename,
+            protocol_name=protocol,
             storage_dir=self.storage_dir,
             sock=self.sock,
             verbose=self.verbose,
@@ -163,9 +185,8 @@ class Server:
             "handler": handler,
             "incoming_q": incoming_q,
         }
-
         handler.start()
-        logger.info(f"[{addr}] Nuevo cliente: {operation} '{filename}'")
+        logger.info(f"[{addr}] Nuevo cliente: {operation} '{filename}' ({protocol})")
 
     def _cleanup_loop(self):
         while True:

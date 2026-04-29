@@ -22,6 +22,7 @@ HEADER_FORMAT = "!HHHBH"
 HEADER_SIZE = struct.calcsize(HEADER_FORMAT)  # 9 bytes
 MAX_PAYLOAD = 1400 # bytes (para evitar fragmentación IP)
 MAX_PACKET_SIZE = HEADER_SIZE + MAX_PAYLOAD
+MAX_SEQ = 1 << 16
 
 FLAG_DATA = 0x01
 FLAG_ACK = 0x02
@@ -42,6 +43,9 @@ def checksum(data: bytes) -> int:
 
 
 def build_packet(seq: int, ack: int, flags: int, payload: bytes = b"") -> bytes:
+    # Campos SEQ/ACK son de 16 bits en el header.
+    seq &= 0xFFFF
+    ack &= 0xFFFF
     length = len(payload)
     header = struct.pack(HEADER_FORMAT, seq, ack, length, flags, 0)
     ck = checksum(header + payload)
@@ -66,8 +70,11 @@ def parse_packet(data: bytes):
     }
 
 
-def create_handshake_packet(operation: str, filename: str) -> bytes:
-    payload = f"{operation}|{filename}".encode()
+def create_handshake_packet(operation: str, filename: str, protocol: str = None) -> bytes:
+    if protocol:
+        payload = f"{operation}|{filename}|{protocol}".encode()
+    else:
+        payload = f"{operation}|{filename}".encode()
     return build_packet(0, 0, FLAG_HANDSHAKE, payload)
 
 
