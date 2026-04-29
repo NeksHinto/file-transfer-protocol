@@ -97,7 +97,7 @@ class SelectiveRepeat(BaseProtocol):
         retries = {}
 
         while base < total:
-            while next_seq < total and next_seq < base + self.window_size:
+            while next_seq < total and next_seq < base + WINDOW_SIZE:
                 sock.sendto(packets[next_seq], destination)
                 sent_not_acked.add(next_seq)
                 last_send_ts[next_seq] = time.time()
@@ -170,7 +170,7 @@ class SelectiveRepeat(BaseProtocol):
                 try:
                     data, addr = self._recv(sock, self._timeout, recvfrom_fn)
                     packet = parse_packet(data)
-                    seq = packet.seq
+                    seq = packet["seq"]
 
                     if is_fin(packet):  # Caso paquete FIN
                         self._log(f"FIN recibido. Enviando ACK para FIN.")
@@ -188,7 +188,7 @@ class SelectiveRepeat(BaseProtocol):
                             sock.sendto(ack_pkt, addr)
 
                             if seq not in received_buffer:  # Guardo en buffer si no estaba
-                                received_buffer[seq] = packet.payload
+                                received_buffer[seq] = packet["payload"]
 
                             while expected_base in received_buffer:  # Si es el primero muevo la ventana
                                 data_to_write = received_buffer.pop(expected_base)
