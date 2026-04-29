@@ -157,6 +157,7 @@ class Server:
                 if client is not None:
                     client["incoming_q"].put((data, addr))
                 elif is_handshake(pkt):
+                    # TODO: Manejo errores lado servidor
                     self._spawn(addr, pkt)
 
     def _spawn(self, addr, pkt):

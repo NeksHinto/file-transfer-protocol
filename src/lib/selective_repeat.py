@@ -172,6 +172,9 @@ class SelectiveRepeat(BaseProtocol):
                     packet = parse_packet(data)
                     seq = packet.seq
 
+                    if packet is None:
+                        self._log(f"Paquete corrupto. Se droppeó el paquete.")
+
                     if is_fin(packet):  # Caso paquete FIN
                         self._log(f"FIN recibido. Enviando ACK para FIN.")
                         # TODO: Implementar para que admita ACK y SEQ
@@ -208,6 +211,9 @@ class SelectiveRepeat(BaseProtocol):
 
                 except (TimeoutError, socket.timeout):  # TEMPORAL: Es nomás para no quedarse atascado.
                     continue
+                except OSError as e: # Solo cliente
+                    self._log(f"Error de sistema: {e}")
+                    break
                 except Exception as e:
                     self._log(f"Error durante la recepción: {e}")
                     break

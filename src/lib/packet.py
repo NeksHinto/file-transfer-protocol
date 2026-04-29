@@ -71,6 +71,7 @@ def parse_packet(data: bytes):
 
 
 def create_handshake_packet(operation: str, filename: str, protocol: str = None) -> bytes:
+    # TODO: Permitir concatenar tamaño del archivo.
     if protocol:
         payload = f"{operation}|{filename}|{protocol}".encode()
     else:
