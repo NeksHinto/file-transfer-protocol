@@ -18,12 +18,14 @@ Flags:
 
 import struct
 
+# ASK
 HEADER_FORMAT = "!HHHBH"
 HEADER_SIZE = struct.calcsize(HEADER_FORMAT)  # 9 bytes
-MAX_PAYLOAD = 1400 # bytes (para evitar fragmentación IP)
+MAX_PAYLOAD = 1400  # bytes (para evitar fragmentación IP)
 MAX_PACKET_SIZE = HEADER_SIZE + MAX_PAYLOAD
 MAX_SEQ = 1 << 16
 
+# TODO: hay espacio maybe para "piggybacking" de ACK+FIN por ejemplo.
 FLAG_DATA = 0x01
 FLAG_ACK = 0x02
 FLAG_FIN = 0x04
@@ -31,6 +33,7 @@ FLAG_HANDSHAKE = 0x08
 FLAG_ERROR = 0x10
 
 
+# RFC 1071 (16 bits)
 def checksum(data: bytes) -> int:
     if len(data) % 2 != 0:
         data += b"\x00"
@@ -42,12 +45,15 @@ def checksum(data: bytes) -> int:
     return ~total & 0xFFFF
 
 
+# build [ HEADER | PAYLOAD ]
 def build_packet(seq: int, ack: int, flags: int, payload: bytes = b"") -> bytes:
     # Campos SEQ/ACK son de 16 bits en el header.
     seq &= 0xFFFF
     ack &= 0xFFFF
     length = len(payload)
-    header = struct.pack(HEADER_FORMAT, seq, ack, length, flags, 0)
+    header = struct.pack(
+        HEADER_FORMAT, seq, ack, length, flags, 0
+    )  # rturns invariant bytes obj
     ck = checksum(header + payload)
     header = struct.pack(HEADER_FORMAT, seq, ack, length, flags, ck)
     return header + payload
@@ -59,8 +65,11 @@ def parse_packet(data: bytes):
     seq, ack, length, flags, ck = struct.unpack(HEADER_FORMAT, data[:HEADER_SIZE])
     payload = data[HEADER_SIZE : HEADER_SIZE + length]
     header = struct.pack(HEADER_FORMAT, seq, ack, length, flags, 0)
-    if checksum(header + payload) != ck:
+    # possibility of packet truncated, may pass correctly checksum validation but payload is incomplete
+    if len(data) < HEADER_SIZE + length:
         return None
+    if checksum(header + payload) != 0xFFFF:
+        return None  # rdt3.0 (ignore the packet, sender times out and retransmits)
     return {
         "seq": seq,
         "ack": ack,
@@ -70,7 +79,9 @@ def parse_packet(data: bytes):
     }
 
 
-def create_handshake_packet(operation: str, filename: str, protocol: str = None) -> bytes:
+def create_handshake_packet(
+    operation: str, filename: str, protocol: str = None
+) -> bytes:
     # TODO: Permitir concatenar tamaño del archivo.
     if protocol:
         payload = f"{operation}|{filename}|{protocol}".encode()
@@ -88,7 +99,9 @@ def create_ack_packet(seq: int) -> bytes:
 
 
 def create_fin_packet() -> bytes:
-    return build_packet(0, 0, FLAG_FIN) # TODO: Cambiar a build_packet(seq + 1, seq, FLAG_FIN / FLAG_ACK)
+    return build_packet(
+        0, 0, FLAG_FIN
+    )  # TODO: Cambiar a build_packet(seq + 1, seq, FLAG_FIN / FLAG_ACK)
 
 
 def create_error_packet(message: str) -> bytes:
@@ -119,7 +132,7 @@ def read_file_chunks(filepath: str, chunk_size: int = MAX_PAYLOAD):
     with open(filepath, "rb") as f:
         seq = 0
         while True:
-            chunk = f.read(chunk_size)
+            chunk = f.read(chunk_size)  # b"" = empty bytes = EOF
             if not chunk:
                 break
             yield seq, chunk
