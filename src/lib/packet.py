@@ -62,14 +62,17 @@ def build_packet(seq: int, ack: int, flags: int, payload: bytes = b"") -> bytes:
 def parse_packet(data: bytes):
     if len(data) < HEADER_SIZE:
         return None
-    seq, ack, length, flags, ck = struct.unpack(HEADER_FORMAT, data[:HEADER_SIZE])
-    payload = data[HEADER_SIZE : HEADER_SIZE + length]
-    header = struct.pack(HEADER_FORMAT, seq, ack, length, flags, 0)
-    # possibility of packet truncated, may pass correctly checksum validation but payload is incomplete
+    seq, ack, length, flags, _ck = struct.unpack(HEADER_FORMAT, data[:HEADER_SIZE])
     if len(data) < HEADER_SIZE + length:
+        # truncado: declara mas payload del que llego
         return None
-    if checksum(header + payload) != 0xFFFF:
-        return None  # rdt3.0 (ignore the packet, sender times out and retransmits)
+    payload = data[HEADER_SIZE : HEADER_SIZE + length]
+    # RFC 1071: la suma 1's-complement sobre todos los
+    # bytes recibidos debe foldear a all-ones (0xFFFF).
+    # `checksum()` devuelve el complemento, así que el
+    # caso válido es 0x0000. si no, ignoramos el paquete (RDT 3.0)
+    if checksum(data[: HEADER_SIZE + length]) != 0x0000:
+        return None
     return {
         "seq": seq,
         "ack": ack,
@@ -80,13 +83,19 @@ def parse_packet(data: bytes):
 
 
 def create_handshake_packet(
-    operation: str, filename: str, protocol: str = None
+    operation: str,
+    filename: str,
+    protocol: str = None,
+    file_size: int = 0,
 ) -> bytes:
-    # TODO: Permitir concatenar tamaño del archivo.
-    if protocol:
-        payload = f"{operation}|{filename}|{protocol}".encode()
-    else:
-        payload = f"{operation}|{filename}".encode()
+    """HANDSHAKE: payload = "OPERATION|filename|protocol|file_size".
+
+    `protocol` y `file_size` son opcionales; si no se conocen se
+    envían vacío y 0 respectivamente. `file_size` es informativo
+    (uploads): el servidor puede loggear/validar el tamaño final.
+    """
+    parts = [operation, filename, protocol or "", str(int(file_size))]
+    payload = "|".join(parts).encode()
     return build_packet(0, 0, FLAG_HANDSHAKE, payload)
 
 
@@ -98,10 +107,16 @@ def create_ack_packet(seq: int) -> bytes:
     return build_packet(0, seq, FLAG_ACK)
 
 
-def create_fin_packet() -> bytes:
-    return build_packet(
-        0, 0, FLAG_FIN
-    )  # TODO: Cambiar a build_packet(seq + 1, seq, FLAG_FIN / FLAG_ACK)
+def create_fin_packet(next_seq: int = 0) -> bytes:
+    """FIN del sender.
+
+    `next_seq` lleva el número de secuencia que el sender habría
+    usado a continuación (en SR: total de chunks; en SW: el alternate
+    bit que tocaba). El receptor identifica la terminacion por el flag,
+    pero el nro ayuda a correlacionar el ACK(FIN) y a descartar FINs
+    rezagados de sesiones previas.
+    """
+    return build_packet(next_seq, 0, FLAG_FIN)
 
 
 def create_error_packet(message: str) -> bytes:
