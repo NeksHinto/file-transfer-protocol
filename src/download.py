@@ -115,7 +115,7 @@ def main():
                 if pkt and is_error(pkt):
                     log_error(
                         logger,
-                        f"server rechazo: {pkt['payload'].decode(errors='replace')}",
+                        f"server rechazó: {pkt['payload'].decode(errors='replace')}",
                     )
                     sys.exit(1)
                 if pkt and is_ack(pkt):
