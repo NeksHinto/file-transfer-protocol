@@ -1,12 +1,11 @@
 """
-Protocolo Selective Repeat – TP1 Redes 2026
+Protocolo Selective Repeat - TP1 Redes 2026
 """
 
-import logging
 import socket
 import time
-from collections import OrderedDict
 
+from lib.logging_utils import log_error
 from lib.packet import (
     create_data_packet,
     create_ack_packet,
@@ -14,6 +13,7 @@ from lib.packet import (
     is_ack,
     is_fin,
     is_data,
+    is_error,
     parse_packet,
     read_file_chunks,
     MAX_PACKET_SIZE,
@@ -21,25 +21,24 @@ from lib.packet import (
 )
 from lib.protocol import BaseProtocol
 
-logger = logging.getLogger("SELECTIVEREPEAT")
-
 # Parámetros del protocolo
-WINDOW_SIZE = 16                # tamaño de la ventana de envío/recepción
-MAX_RETRIES = 20               # reintentos totales por paquete
+WINDOW_SIZE = 16  # tamaño de la ventana de envío/recepción (control de flujo)
+MAX_RETRIES = 20  # reintentos totales por paquete
 INITIAL_TIMEOUT = 0.5
 ALPHA = 0.125
 BETA = 0.25
 
+
 class SelectiveRepeat(BaseProtocol):
-    def __init__(self, verbose: bool = False):
-        super().__init__(verbose)
+    def __init__(self, verbose: bool = False, logger=None):
+        super().__init__(verbose, logger=logger)
         self._estimated_rtt = INITIAL_TIMEOUT
         self._dev_rtt = 0.0
         self._timeout = INITIAL_TIMEOUT
 
     def _log(self, msg):
         if self.verbose:
-            logger.debug(msg)
+            self.logger.debug(msg)
 
     # ------------------------------------------------------------------ RTO
     def _update_rto(self, sample_rtt: float):
@@ -51,12 +50,14 @@ class SelectiveRepeat(BaseProtocol):
         self._log(f"Nuevo RTO: {self._timeout:.3f}s (RTT={sample_rtt:.3f}s)")
 
     # ------------------------------------------------------------------ RECV
+    # ASK: recvfrom_fn ?
     def _recv(self, sock, timeout: float, recvfrom_fn=None):
         if recvfrom_fn is not None:
             return recvfrom_fn(timeout)
         sock.settimeout(timeout)
         return sock.recvfrom(MAX_PACKET_SIZE)
 
+    # classic kurose design from sliding window protocols
     def _in_window(self, seq: int, base: int, size: int) -> bool:
         return ((seq - base) % MAX_SEQ) < size
 
@@ -86,8 +87,10 @@ class SelectiveRepeat(BaseProtocol):
         )
 
         payloads = [chunk for _, chunk in chunks]
-        packets = {seq: create_data_packet(seq, payload) for seq, payload in enumerate(payloads)}
-
+        packets = {
+            seq: create_data_packet(seq, payload)
+            for seq, payload in enumerate(payloads)
+        }
 
         base = 0
         next_seq = 0
@@ -108,7 +111,13 @@ class SelectiveRepeat(BaseProtocol):
             try:
                 data, _ = self._recv(sock, self._timeout, recvfrom_fn)
                 pkt = parse_packet(data)
-                if pkt and is_ack(pkt):
+                if pkt is None:
+                    self.logger.warning("SR sender: paquete corrupto ignorado")
+                elif is_error(pkt):
+                    msg = pkt["payload"].decode(errors="replace")
+                    self.logger.error(f"SR sender: ERROR del peer: {msg}")
+                    raise RuntimeError(f"peer reporto error: {msg}")
+                elif is_ack(pkt):
                     ack = pkt["ack"]
                     if 0 <= ack < total and ack not in acked:
                         acked.add(ack)
@@ -117,8 +126,9 @@ class SelectiveRepeat(BaseProtocol):
                         self._update_rto(sample)
                         self._log(f"SR ack seq={ack} (base={base})")
                         while base in acked:
+                            # sliding the window when the lowest unacknowledged packet is ACKed
                             base += 1
-            except OSError:
+            except (OSError, socket.timeout, TimeoutError):
                 pass
 
             now = time.time()
@@ -127,39 +137,49 @@ class SelectiveRepeat(BaseProtocol):
                 if now - sent_at >= self._timeout:
                     retries[seq] = retries.get(seq, 0) + 1
                     if retries[seq] > MAX_RETRIES:
+                        log_error(
+                            self.logger,
+                            f"SR sender: no se entregó seq={seq} "
+                            f"tras {MAX_RETRIES} reintentos",
+                        )
                         raise RuntimeError(
                             "No se pudo entregar el paquete "
                             f"seq: {seq} tras {MAX_RETRIES} intentos"
                         )
                     sock.sendto(packets[seq], destination)
                     last_send_ts[seq] = now
-                    self._log(
-                        f"SR timeout seq={seq} -> resend ({retries[seq]}/{MAX_RETRIES})"
+                    self.logger.warning(
+                        f"SR sender: timeout seq={seq} "
+                        f"-> reenvío ({retries[seq]}/{MAX_RETRIES})"
                     )
 
-        # Enviar FIN con reintentos
-        fin = create_fin_packet()
-        for _ in range(MAX_RETRIES):
-            self._log("FIN enviado")
+        # FIN con reintentos. `next_seq=total` da al receptor un check
+        # opcional ("recibí total chunks"); tambien correlaciona el ACK.
+        fin = create_fin_packet(next_seq=total)
+        fin_acked = False
+        for attempt in range(1, MAX_RETRIES + 1):
+            self._log(f"FIN enviado (intento {attempt}/{MAX_RETRIES})")
             sock.sendto(fin, destination)
             try:
                 data, _ = self._recv(sock, self._timeout, recvfrom_fn)
                 pkt = parse_packet(data)
                 if pkt and is_ack(pkt):
                     self._log("FIN ACK recibido")
+                    fin_acked = True
                     break
-            except OSError:
+            except (OSError, socket.timeout, TimeoutError):
                 pass
-            except TimeoutError:
-                pass
+        if not fin_acked:
+            self.logger.warning(
+                "SR sender: cerrando sin ACK(FIN); "
+                "el receptor probablemente recibió el archivo"
+            )
 
     # ================================================================
     #                         RECEIVER
     # ================================================================
     def receive_file(self, filepath: str, sock, sender_addr: tuple, recvfrom_fn=None):
-        # Falta: manejo de errores por fuera de timeout error
-
-        self._log(f"Iniciando recepción en {filepath}")
+        self._log(f"Iniciando recepcion en {filepath}")
 
         received_buffer = {}
         expected_base = 0
@@ -170,53 +190,56 @@ class SelectiveRepeat(BaseProtocol):
                 try:
                     data, addr = self._recv(sock, self._timeout, recvfrom_fn)
                     packet = parse_packet(data)
-                    seq = packet["seq"] 
 
                     if packet is None:
-                        self._log(f"Paquete corrupto. Se droppeó el paquete.")
+                        self.logger.warning("SR receiver: paquete corrupto descartado")
+                        continue
 
-                    if is_fin(packet):  # Caso paquete FIN
-                        self._log(f"FIN recibido. Enviando ACK para FIN.")
-                        # TODO: Implementar para que admita ACK y SEQ
-                        ack_pkt = create_ack_packet(seq) #seq)  # O create_ack_packet no sé
+                    seq = packet["seq"]
+
+                    if is_fin(packet):
+                        self._log("FIN recibido. Enviando ACK para FIN.")
+                        ack_pkt = create_ack_packet(seq)
                         sock.sendto(ack_pkt, addr)
                         finished = True
                         break
 
                     if is_data(packet):
                         if self._in_window(seq, expected_base, WINDOW_SIZE):
-                            self._log(f"Paquete {seq} recibido en ventana. Enviando ACK.")
-
-                            ack_pkt = create_ack_packet(seq)  # Envio ACK
-                            sock.sendto(ack_pkt, addr)
-
-                            if seq not in received_buffer:  # Guardo en buffer si no estaba
-                                received_buffer[seq] = packet["payload"]
-
-                            while expected_base in received_buffer:  # Si es el primero muevo la ventana
-                                data_to_write = received_buffer.pop(expected_base)
-                                f.write(data_to_write)
-                                self._log(f"Entregando paquete {expected_base} al archivo.")
-                                expected_base = (expected_base + 1) % MAX_SEQ
-
-                        elif self._is_previous_window(seq, expected_base,
-                                                          WINDOW_SIZE):  # Caso: anterior posiblemente perdido
-                            self._log(f"Paquete {seq} antiguo (duplicado). Re-enviando ACK.")
+                            self._log(f"Paquete {seq} en ventana - ACK + buffer")
                             ack_pkt = create_ack_packet(seq)
                             sock.sendto(ack_pkt, addr)
 
-                        else:
-                            # Fuera de rango, ignoramos
-                            self._log(f"Paquete {seq} fuera de rango. Ignorado.")
+                            if seq not in received_buffer:
+                                received_buffer[seq] = packet["payload"]
 
-                except (TimeoutError, socket.timeout):  # TEMPORAL: Es nomás para no quedarse atascado.
+                            while expected_base in received_buffer:
+                                data_to_write = received_buffer.pop(expected_base)
+                                f.write(data_to_write)
+                                self._log(f"Entregando paquete {expected_base}")
+                                expected_base = (expected_base + 1) % MAX_SEQ
+                        elif self._is_previous_window(seq, expected_base, WINDOW_SIZE):
+                            self._log(f"Paquete {seq} antiguo (duplicado) - re-ACK")
+                            ack_pkt = create_ack_packet(seq)
+                            sock.sendto(ack_pkt, addr)
+                        else:
+                            self.logger.warning(
+                                f"SR receiver: seq={seq} fuera de rango "
+                                f"(base={expected_base}) - descartado"
+                            )
+                    else:
+                        self.logger.warning(
+                            f"SR receiver: paquete con flags inesperadas "
+                            f"({packet['flags']:#04x}) descartado"
+                        )
+
+                except (TimeoutError, socket.timeout):
                     continue
-                except OSError as e: # Solo cliente
-                    self._log(f"Error de sistema: {e}")
+                except OSError as e:
+                    log_error(self.logger, "SR receiver: error de socket", e)
                     break
                 except Exception as e:
-                    self._log(f"Error durante la recepción: {e}")
+                    log_error(self.logger, "SR receiver: error inesperado", e)
                     break
 
-        self._log("Recepción finalizada exitosamente.")
-        # ---------------------------------------------------------
+        self._log("Recepcion finalizada.")
