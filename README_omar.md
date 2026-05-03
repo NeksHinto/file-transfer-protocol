@@ -109,11 +109,7 @@ Estos comandos se ejecutan en una terminal normal de Linux (fuera del prompt `mi
 
 ```bash
 # Limpiar procesos/estado previo de Mininet (purgar basura)
-sudo mn -c && sudo pkill -f mininet_topo.py 2>/dev/null || true
-sudo pkill -f start-server.py 2>/dev/null || true
-sudo umount /TP1-Redes-2026 2>/dev/null || true
-sudo rm -rf /tmp/tp1_shared /tmp/descargas /tmp/captura.pcap /tmp/server.log
-rm -f ./data/*.bin
+sudo mn -c && sudo pkill -f mininet_topo.py 2>/dev/null || true && sudo pkill -f start-server.py 2>/dev/null || true && sudo umount /TP1-Redes-2026 2>/dev/null || true && sudo rm -rf /tmp/tp1_shared /tmp/descargas /tmp/captura.pcap /tmp/server.log && rm -f ./data/*.bin
 
 # Crear logs locales y arrancar Mininet
 mkdir -p logs
