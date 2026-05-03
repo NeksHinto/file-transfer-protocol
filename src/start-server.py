@@ -219,7 +219,7 @@ class Server:
             operation = parts[0].upper()
             filename = os.path.basename(parts[1])
             protocol = (parts[2] if len(parts) > 2 else "stop_and_wait").lower()
-
+            file_size = int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else 0
             validate(
                 operation in VALID_OPERATIONS,
                 f"operacion inválida: {operation}",
@@ -258,7 +258,9 @@ class Server:
         )
         self.clients[addr] = {"handler": handler, "incoming_q": incoming_q}
         handler.start()
-        peer_logger.info(f"nuevo cliente: {operation} '{filename}' ({protocol})")
+        peer_logger.info(
+            f"nuevo cliente: {operation} '{filename}' ({protocol}) file_size={file_size}"
+        )
 
     # removes finished sessions to prevent memory leaks and stale sessions
     def _cleanup_loop(self):
@@ -269,6 +271,7 @@ class Server:
 
 
 # --------------------------------------------------------------- entrypoint --
+
 
 # cli parsin, logging setup, server startup
 def main():
