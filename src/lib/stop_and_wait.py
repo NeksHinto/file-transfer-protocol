@@ -122,7 +122,7 @@ class StopAndWait(BaseProtocol):
                         break
                     # ACK de otro seq: ignorar y esperar
                 except (OSError, TimeoutError):  # no ACK received within RTO
-                    retries += 1 # packet is retransmitted
+                    retries += 1  # packet is retransmitted
                     self.logger.warning(
                         f"SW sender: timeout esperando ACK seq={seq_num}, "
                         f"reintento {retries}/{MAX_RETRIES}"
@@ -142,9 +142,10 @@ class StopAndWait(BaseProtocol):
             # Sequence space is just {0, 1}. Kurose 3.4.2 (RDT 3.0) flow control
             seq_num = 1 - seq_num
 
-        # ASK: FIN retransmission loop (no seq validation? any ACK is accepted?)
-        # sender assumes receiver likely got everything, but not confirmation?
-        fin = create_fin_packet()
+        # FIN retransmission loop. `next_seq` lleva el alternate bit
+        # que tocaría mandar a continuación (no se valida en el receptor;
+        # sirve para correlacionar el ACK(FIN) y descartar FINs viejos).
+        fin = create_fin_packet(next_seq=seq_num)
         fin_acked = False
         for attempt in range(1, MAX_RETRIES + 1):
             self._log(f"FIN enviado (intento {attempt}/{MAX_RETRIES})")
@@ -202,8 +203,9 @@ class StopAndWait(BaseProtocol):
                         sock.sendto(create_ack_packet(expected_seq), sender_addr)
                         expected_seq = 1 - expected_seq
                     else:
-                        # mismatch -> re-ACK the previous (so the sender unblocks if its ACK was lost)
-                        # kurose duplicate-detection rule 3.4.2
+                        # mismatch -> re-ACK previous para que el sender
+                        # se destrabe si su ACK se había perdido.
+                        # Kurose 3.4.2 (duplicate-detection rule).
                         self._log(
                             f"Paquete duplicado seq: {pkt['seq']} "
                             f"(esperado: {expected_seq}) - re-ACK"
