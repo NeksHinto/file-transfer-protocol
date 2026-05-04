@@ -1,0 +1,11 @@
+services:
+  web:
+    image: python:3.11-alpine
+    container_name: static-server
+    ports:
+      - '8080:80'
+    volumes:
+      - ./dist:/srv:ro
+    working_dir: /srv
+    command: python -m http.server 80
+    restart: unless-stopped
