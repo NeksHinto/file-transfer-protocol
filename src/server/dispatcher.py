@@ -25,6 +25,8 @@ from server.session import ClientHandler
 VALID_OPERATIONS = {"UPLOAD", "DOWNLOAD"}
 VALID_PROTOCOLS = {"stop_and_wait", "sw", "selective_repeat", "sr"}
 
+MAX_FILE_SIZE = 1 << 30  # 1 GiB
+
 
 class Server:
 
@@ -95,8 +97,8 @@ class Server:
             )
             operation = parts[0].upper()
             filename = os.path.basename(parts[1])
-            protocol = parts[2] if len(parts) > 2 else "stop_and_wait"
-            file_size = parts[3] if len(parts) > 3 and parts[3].isdigit() else 0
+            protocol = (parts[2] if len(parts) > 2 else "").lower() or "stop_and_wait"
+            file_size = int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else 0
 
             validate(
                 operation in VALID_OPERATIONS,
@@ -114,6 +116,12 @@ class Server:
                 f"protocolo inválido: {protocol}",
                 peer_logger,
             )
+            if operation == "UPLOAD" and file_size > 0:
+                validate(
+                    file_size <= MAX_FILE_SIZE,
+                    f"file_size {file_size} excede MAX_FILE_SIZE {MAX_FILE_SIZE}",
+                    peer_logger,
+                )
         except ValidationError as e:
             self.sock.sendto(create_error_packet(str(e)), addr)
             return
@@ -133,6 +141,7 @@ class Server:
             verbose=self.verbose,
             finished_q=self.finished_q,
             incoming_q=incoming_q,
+            file_size=file_size,
         )
         self.clients[addr] = {"handler": handler, "incoming_q": incoming_q}
         handler.start()

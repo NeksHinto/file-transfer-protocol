@@ -13,14 +13,13 @@ from lib.logging_utils import (
     ValidationError,
     get_logger,
     log_error,
-    validate,
 )
 from lib.messages import create_ack_packet, create_error_packet
 from lib.protocol import get_protocol
 
 
 class ClientHandler(threading.Thread):
-    """Maneja una sesion (un solo upload/download) contra un peer."""
+    """Maneja una sesión (un solo upload/download) contra un peer."""
 
     def __init__(
         self,
@@ -33,6 +32,7 @@ class ClientHandler(threading.Thread):
         verbose,
         finished_q,
         incoming_q,
+        file_size=0,
     ):
         super().__init__(daemon=True)
         self.addr = addr
@@ -44,6 +44,7 @@ class ClientHandler(threading.Thread):
         self.verbose = verbose
         self.finished_q = finished_q
         self.incoming_q = incoming_q
+        self.file_size = file_size
         self.logger = get_logger("SERVER", peer=addr)
 
     # ----------------------------------------------------------- recvfrom --
@@ -97,7 +98,13 @@ class ClientHandler(threading.Thread):
             self.addr,
             recvfrom_fn=self._recvfrom_client,
         )
-        self.logger.info(f"archivo guardado: {filepath}")
+        actual = os.path.getsize(filepath)
+        if self.file_size > 0 and actual != self.file_size:
+            self.logger.warning(
+                f"tamaño final no coincide: esperado={self.file_size} "
+                f"actual={actual} ({filepath})"
+            )
+        self.logger.info(f"archivo guardado: {filepath} ({actual} bytes)")
 
     def _download(self, protocol):
         filepath = os.path.join(self.storage_dir, self.filename)
