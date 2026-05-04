@@ -11,20 +11,12 @@ Receiver: recibe paquetes en orden, envía ACK por cada uno.
 
 import time
 
+from lib.chunker import read_file_chunks
+from lib.flags import is_ack, is_data, is_error, is_fin
 from lib.logging_utils import log_error
-from lib.packet import (
-    create_data_packet,
-    create_ack_packet,
-    create_fin_packet,
-    is_ack,
-    is_fin,
-    is_data,
-    is_error,
-    parse_packet,
-    read_file_chunks,
-    MAX_PACKET_SIZE,
-)
+from lib.messages import create_ack_packet, create_data_packet, create_fin_packet
 from lib.protocol import BaseProtocol
+from lib.wire import MAX_PACKET_SIZE, parse_packet
 
 MAX_RETRIES = 20
 INITIAL_TIMEOUT = 0.5  # RFC 6298 2.1 recommends 1s?
@@ -50,6 +42,7 @@ class StopAndWait(BaseProtocol):
         self._dev_rtt = (1 - BETA) * self._dev_rtt + BETA * abs(
             sample_rtt - self._estimated_rtt
         )
+        # clamping el timeout entre 50ms y 1s para evitar valores extremos por muestras atípicas
         self._timeout = max(0.05, min(1.0, self._estimated_rtt + 4 * self._dev_rtt))
         self._log(
             f"Nuevo RTO adaptativo: {self._timeout:.3f}s " f"(RTT={sample_rtt:.3f}s)"

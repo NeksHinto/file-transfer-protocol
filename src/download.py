@@ -14,6 +14,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from lib.flags import is_ack, is_error  # noqa: E402
 from lib.logging_utils import (  # noqa: E402
     ValidationError,
     get_logger,
@@ -21,14 +22,9 @@ from lib.logging_utils import (  # noqa: E402
     setup_logging,
     validate,
 )
-from lib.packet import (  # noqa: E402
-    parse_packet,
-    create_handshake_packet,
-    is_ack,
-    is_error,
-    MAX_PACKET_SIZE,
-)
+from lib.messages import create_handshake_packet  # noqa: E402
 from lib.protocol import get_protocol  # noqa: E402
+from lib.wire import MAX_PACKET_SIZE, parse_packet  # noqa: E402
 
 HANDSHAKE_RETRIES = 5
 HANDSHAKE_TIMEOUT = 2.0

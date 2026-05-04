@@ -5,21 +5,12 @@ Protocolo Selective Repeat - TP1 Redes 2026
 import socket
 import time
 
+from lib.chunker import read_file_chunks
+from lib.flags import is_ack, is_data, is_error, is_fin
 from lib.logging_utils import log_error
-from lib.packet import (
-    create_data_packet,
-    create_ack_packet,
-    create_fin_packet,
-    is_ack,
-    is_fin,
-    is_data,
-    is_error,
-    parse_packet,
-    read_file_chunks,
-    MAX_PACKET_SIZE,
-    MAX_SEQ,
-)
+from lib.messages import create_ack_packet, create_data_packet, create_fin_packet
 from lib.protocol import BaseProtocol
+from lib.wire import MAX_PACKET_SIZE, MAX_SEQ, parse_packet
 
 # Parámetros del protocolo
 WINDOW_SIZE = 16  # tamaño de la ventana de envío/recepción (control de flujo)
