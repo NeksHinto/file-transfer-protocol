@@ -86,7 +86,7 @@ class SelectiveRepeat(BaseProtocol):
         )
 
         payloads = [chunk for _, chunk in chunks]
-        packets = {seq: create_data_packet(seq, payload) for seq, payload in enumerate(payloads)}
+        packets = {seq: create_data_packet(seq , payload) for seq, payload in enumerate(payloads)}
 
 
         base = 0
@@ -103,7 +103,7 @@ class SelectiveRepeat(BaseProtocol):
                 last_send_ts[next_seq] = time.time()
                 retries.setdefault(next_seq, 0)
                 self._log(f"SR send seq={next_seq} base={base}")
-                next_seq += 1
+                next_seq = (next_seq + 1) % MAX_SEQ
 
             try:
                 data, _ = self._recv(sock, self._timeout, recvfrom_fn)
@@ -117,7 +117,7 @@ class SelectiveRepeat(BaseProtocol):
                         self._update_rto(sample)
                         self._log(f"SR ack seq={ack} (base={base})")
                         while base in acked:
-                            base += 1
+                            base = (base + 1) % MAX_SEQ
             except OSError:
                 pass
 
