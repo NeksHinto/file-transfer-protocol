@@ -132,7 +132,7 @@ def main():
         elapsed = time.time() - start
 
         size = os.path.getsize(filepath) if os.path.isfile(filepath) else 0
-        logger.warning(f"archivo recibido: {filepath} ({size} bytes) en {elapsed:.2f}s")
+        logger.info(f"archivo recibido: {filepath} ({size} bytes) en {elapsed:.2f}s")
     except KeyboardInterrupt:
         logger.info("download interrumpido")
     except Exception as e:

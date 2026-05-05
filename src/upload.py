@@ -139,7 +139,7 @@ def main():
         start = time.time()
         protocol.send_file(args.src, args.name, server, sock, chunks=source_chunks)
         elapsed = time.time() - start
-        logger.warning(f"transferencia completa en {elapsed:.2f}s")
+        logger.info(f"transferencia completa en {elapsed:.2f}s")
     except KeyboardInterrupt:
         logger.info("upload interrumpido")
     except Exception as e:
