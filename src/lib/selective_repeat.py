@@ -94,6 +94,7 @@ class SelectiveRepeat(BaseProtocol):
                 retries.setdefault(next_seq, 0)
                 self._log(f"SR send seq={next_seq} base={base}")
                 next_seq = (next_seq + 1) % MAX_SEQ
+                next_seq = (next_seq + 1) % MAX_SEQ
 
             try:
                 data, _ = self._recv(sock, self._timeout, recvfrom_fn)
