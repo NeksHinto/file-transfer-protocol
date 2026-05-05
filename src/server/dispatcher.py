@@ -25,7 +25,8 @@ from server.session import ClientHandler
 VALID_OPERATIONS = {"UPLOAD", "DOWNLOAD"}
 VALID_PROTOCOLS = {"stop_and_wait", "sw", "selective_repeat", "sr"}
 
-MAX_FILE_SIZE = 1 << 30  # 1 GiB
+MAX_FILE_SIZE = 1 << 30  # 1 GB
+DISK_SAFETY_MARGIN = 16 << 20  # 16 MB
 
 
 class Server:
@@ -120,6 +121,18 @@ class Server:
                 validate(
                     file_size <= MAX_FILE_SIZE,
                     f"file_size {file_size} excede MAX_FILE_SIZE {MAX_FILE_SIZE}",
+                    peer_logger,
+                )
+                statvfs = os.statvfs(self.storage_dir)
+                # f_bavail = free blocks available to non-root
+                # f_frsize = fragment size (block size)
+                free_bytes = statvfs.f_bavail * statvfs.f_frsize
+                validate(
+                    free_bytes >= file_size + DISK_SAFETY_MARGIN,
+                    (
+                        f"Espacio insuficiente: libre={free_bytes} "
+                        f"requerido={file_size}+{DISK_SAFETY_MARGIN}"
+                    ),
                     peer_logger,
                 )
         except ValidationError as e:
