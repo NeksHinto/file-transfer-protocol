@@ -79,7 +79,7 @@ class SelectiveRepeat(BaseProtocol):
 
         payloads = [chunk for _, chunk in chunks]
         packets = {
-            seq: create_data_packet(seq, payload)
+            seq: create_data_packet(seq % MAX_SEQ, payload)
             for seq, payload in enumerate(payloads)
         }
 
@@ -97,7 +97,7 @@ class SelectiveRepeat(BaseProtocol):
                 last_send_ts[next_seq] = time.time()
                 retries.setdefault(next_seq, 0)
                 self._log(f"SR send seq={next_seq} base={base}")
-                next_seq += 1
+                next_seq = (next_seq + 1) % MAX_SEQ
 
             try:
                 data, _ = self._recv(sock, self._timeout, recvfrom_fn)
@@ -118,7 +118,7 @@ class SelectiveRepeat(BaseProtocol):
                         self._log(f"SR ack seq={ack} (base={base})")
                         while base in acked:
                             # sliding the window when the lowest unacknowledged packet is ACKed
-                            base += 1
+                            base = (base + 1) % MAX_SEQ
             except (OSError, socket.timeout, TimeoutError):
                 pass
 
@@ -146,7 +146,7 @@ class SelectiveRepeat(BaseProtocol):
 
         # FIN con reintentos. `next_seq=total` da al receptor un check
         # opcional ("recibí total chunks"); tambien correlaciona el ACK.
-        fin = create_fin_packet(next_seq=total)
+        fin = create_fin_packet(next_seq=total % MAX_SEQ)
         fin_acked = False
         for attempt in range(1, MAX_RETRIES + 1):
             self._log(f"FIN enviado (intento {attempt}/{MAX_RETRIES})")

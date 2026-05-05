@@ -226,7 +226,7 @@ La topología levanta:
 
 **1. Levantar el servidor en h2:**
 ```
-mininet> h2 python3 /TP1-Redes-2026/src/start-server.py -v -H 10.0.0.2 -p 9000 -s /tmp/storage > /tmp/server.log 2>&1 &
+mininet> h2 python3 /TP1-Redes-2026/src/start_server.py -v -H 10.0.0.2 -p 9000 -s /tmp/storage > /tmp/server.log 2>&1 &
 ```
 
 **2. Verificar que el servidor está corriendo:**
