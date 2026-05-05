@@ -20,7 +20,7 @@ from lib.wire import MAX_PACKET_SIZE, parse_packet
 
 MAX_RETRIES = 20
 INITIAL_TIMEOUT = 0.5  # RFC 6298 2.1 recommends 1s?
-# RFC 6298 TCP timeout calculation parameters:
+# RFC 6298 TCP timeout calculation parameters
 ALPHA = 0.125  # peso de la nueva muestra de RTT
 BETA = 0.25  # peso de la nueva desviación de RTT
 
@@ -59,8 +59,9 @@ class StopAndWait(BaseProtocol):
             MAX_PACKET_SIZE
         )  # waits for a packet to arrive and returns the data and sender's address
 
-    # ------------------------------------------------------------------ SENDER
-    # kurose stop-&-wait state machine
+    # ================================================================
+    #                          SENDER
+    # ================================================================
     def send_file(
         self,
         filepath: str,
@@ -132,7 +133,7 @@ class StopAndWait(BaseProtocol):
                     f"tras {MAX_RETRIES} intentos"
                 )
             # alternating bit protocol: only one packet is “in flight”
-            # Sequence space is just {0, 1}. Kurose 3.4.2 (RDT 3.0) flow control
+            # Seq space is just {0, 1}. Kurose 3.4.2 (RDT 3.0) flow control
             seq_num = 1 - seq_num
 
         # FIN retransmission loop. `next_seq` lleva el alternate bit
@@ -158,8 +159,9 @@ class StopAndWait(BaseProtocol):
                 "el receptor probablemente recibio el archivo"
             )
 
-    # ---------------------------------------------------------------- RECEIVER
-
+    # ================================================================
+    #                         RECEIVER
+    # ================================================================
     def receive_file(self, filepath: str, sock, sender_addr: tuple, recvfrom_fn=None):
         """Recibe un archivo y lo escribe en filepath."""
         expected_seq = 0
@@ -197,8 +199,7 @@ class StopAndWait(BaseProtocol):
                         expected_seq = 1 - expected_seq
                     else:
                         # mismatch -> re-ACK previous para que el sender
-                        # se destrabe si su ACK se había perdido.
-                        # Kurose 3.4.2 (duplicate-detection rule).
+                        # se destrabe si su ACK se había perdido (duplicate detection).
                         self._log(
                             f"Paquete duplicado seq: {pkt['seq']} "
                             f"(esperado: {expected_seq}) - re-ACK"

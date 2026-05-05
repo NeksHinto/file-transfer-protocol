@@ -3,7 +3,7 @@ Server: dispatcher UDP concurrente.
 
 Mantiene un único socket bindeado al puerto público y demultiplexa los
 datagramas entrantes hacia per-client `incoming_q`s. Cada cliente
-nuevo (HANDSHAKE) lanza un `ClientHandler` thread.
+nuevo (HANDSHAKE) instancia un `ClientHandler` thread.
 """
 
 import os
@@ -46,7 +46,6 @@ class Server:
         self._lock = threading.Lock()
         self.logger = get_logger("SERVER")
 
-    # ------------------------------------------------------------------ run --
     def start(self):
         os.makedirs(self.storage_dir, exist_ok=True)
         self.sock.bind((self.host, self.port))
@@ -86,7 +85,6 @@ class Server:
                         f"(flags={pkt['flags']:#04x}) descartado"
                     )
 
-    # -------------------------------------------------------------- spawn --
     def _spawn(self, addr, pkt):
         peer_logger = get_logger("SERVER", peer=addr)
         try:
@@ -162,7 +160,6 @@ class Server:
             f"nuevo cliente: {operation} '{filename}' ({protocol}) file_size={file_size}"
         )
 
-    # -------------------------------------------------------------- cleanup --
     def _cleanup_loop(self):
         """Drena `finished_q` y libera entradas de `clients`."""
         while True:

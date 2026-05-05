@@ -1,5 +1,5 @@
 """
-Representacion binaria de paquetes sobre la red (capa de wire).
+Representación binaria de paquetes sobre la red (capa de wire).
 Header (9 bytes):
     +--------+--------+--------+-------+--------+
     |  SEQ   |  ACK   | LENGTH | FLAGS | CKSUM  |
@@ -11,24 +11,19 @@ Header (9 bytes):
 
 import struct
 
-# ----------------------------------------------------------------- formato --
-# "!" -> network byte order (big-endian, sin padding por alineacion)
+# "!" -> network byte order (big-endian, sin padding por alineación)
 # "H" -> uint16 (SEQ, ACK, LENGTH, CKSUM)
 # "B" -> uint8 (FLAGS)
 HEADER_FORMAT = "!HHHBH"
 HEADER_SIZE = struct.calcsize(HEADER_FORMAT)  # 9 bytes
 
-# ------------------------------------------------------------- tamaños MTU --
 MAX_PAYLOAD = 1400
 MAX_PACKET_SIZE = HEADER_SIZE + MAX_PAYLOAD
 
-# ----------------------------------------------- espacio de secuencias SEQ --
-# El campo SEQ es uint16 -> 2^16 valores (0..65535)
 SEQ_BITS = 16
 MAX_SEQ = 1 << SEQ_BITS
 
 
-# ------------------------------------------------------- checksum RFC 1071 --
 def checksum(data: bytes) -> int:
     """Internet checksum 16-bit one's-complement (RFC 1071)."""
     if len(data) % 2 != 0:
@@ -41,7 +36,7 @@ def checksum(data: bytes) -> int:
     return ~total & 0xFFFF
 
 
-# ---------------------------------------------------------- serializacion --
+# serialización
 def build_packet(seq: int, ack: int, flags: int, payload: bytes = b"") -> bytes:
     seq &= 0xFFFF
     ack &= 0xFFFF

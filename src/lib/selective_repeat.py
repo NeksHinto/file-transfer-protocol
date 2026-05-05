@@ -31,7 +31,6 @@ class SelectiveRepeat(BaseProtocol):
         if self.verbose:
             self.logger.debug(msg)
 
-    # ------------------------------------------------------------------ RTO
     def _update_rto(self, sample_rtt: float):
         self._estimated_rtt = (1 - ALPHA) * self._estimated_rtt + ALPHA * sample_rtt
         self._dev_rtt = (1 - BETA) * self._dev_rtt + BETA * abs(
@@ -40,15 +39,12 @@ class SelectiveRepeat(BaseProtocol):
         self._timeout = max(0.05, min(1.0, self._estimated_rtt + 4 * self._dev_rtt))
         self._log(f"Nuevo RTO: {self._timeout:.3f}s (RTT={sample_rtt:.3f}s)")
 
-    # ------------------------------------------------------------------ RECV
-    # ASK: recvfrom_fn ?
     def _recv(self, sock, timeout: float, recvfrom_fn=None):
         if recvfrom_fn is not None:
             return recvfrom_fn(timeout)
         sock.settimeout(timeout)
         return sock.recvfrom(MAX_PACKET_SIZE)
 
-    # classic kurose design from sliding window protocols
     def _in_window(self, seq: int, base: int, size: int) -> bool:
         return ((seq - base) % MAX_SEQ) < size
 

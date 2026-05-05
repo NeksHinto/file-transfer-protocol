@@ -47,7 +47,6 @@ class ClientHandler(threading.Thread):
         self.file_size = file_size
         self.logger = get_logger("SERVER", peer=addr)
 
-    # ----------------------------------------------------------- recvfrom --
     def _recvfrom_client(self, timeout: float):
         """Bloquea hasta que el dispatcher meta un paquete del peer."""
         try:
@@ -55,7 +54,6 @@ class ClientHandler(threading.Thread):
         except queue.Empty as e:
             raise TimeoutError() from e
 
-    # ----------------------------------------------------------------- run --
     def run(self):
         self.logger.info(
             f"{self.operation} '{self.filename}' protocolo={self.protocol_name}"
@@ -82,7 +80,6 @@ class ClientHandler(threading.Thread):
             self.finished_q.put(self.addr)
             self.logger.info("sesion finalizada")
 
-    # -------------------------------------------------------------- helpers --
     def _send_error(self, msg: str) -> None:
         try:
             self.sock.sendto(create_error_packet(msg), self.addr)

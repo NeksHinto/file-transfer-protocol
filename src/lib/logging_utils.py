@@ -37,14 +37,12 @@ class PeerLoggerAdapter(logging.LoggerAdapter):
 
 
 def get_logger(name: str, peer=None) -> PeerLoggerAdapter:
-    """devuelve un `LoggerAdapter` que prefija cada mensaje con `[ip:port]` del peer asociado,
-    util para distinguir multiples clientes concurrentes en el log unico del servidor.
-    """
+    """devuelve un `LoggerAdapter` que prefija cada mensaje con `[ip:port]` del peer asociado"""
     return PeerLoggerAdapter(logging.getLogger(name), {"peer": format_addr(peer)})
 
 
 def setup_logging(level: int = logging.INFO, log_file: str = None) -> None:
-    """configura el root logger una sola vez (consola + archivo)."""
+    """configura el root logger."""
     handlers = [logging.StreamHandler(sys.stdout)]
     if log_file:
         log_dir = os.path.dirname(log_file)
