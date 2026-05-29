@@ -1,0 +1,16 @@
+services:
+  python-server:
+    image: python:3.11-slim
+    container_name: python-server
+    command:
+      ['python3', 'src/start_server.py', '-v', '-H', '0.0.0.0', '-p', '9000', '-s', '/storage']
+    ports:
+      - '9000:9000/udp'
+    volumes:
+      - ./src:/src:ro
+    tmpfs:
+      - /storage:size=50m
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
